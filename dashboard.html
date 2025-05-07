@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Smart Greenhouse IoT System</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">Smart Greenhouse</div>
+        <div class="nav-links">
+            <a href="dashboard.html" class="active">Dashboard</a>
+            <a href="#" id="logoutBtn">Logout</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        <section class="dashboard-header">
+            <h1>Welcome, <span id="userName">User</span></h1>
+            <button id="requestSetupBtn" class="btn primary">Request System Setup</button>
+        </section>
+
+        <section class="real-time-data">
+            <h2>Real-time Monitoring</h2>
+            <div class="data-grid">
+                <div class="data-card">
+                    <h3>Temperature</h3>
+                    <p class="value" id="temperature">--°C</p>
+                </div>
+                <div class="data-card">
+                    <h3>Humidity</h3>
+                    <p class="value" id="humidity">--%</p>
+                </div>
+                <div class="data-card">
+                    <h3>Soil Moisture</h3>
+                    <p class="value" id="soilMoisture">--%</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="historical-data">
+            <h2>Historical Data</h2>
+            <div class="chart-container">
+                <canvas id="dataChart"></canvas>
+            </div>
+            <div class="time-range">
+                <button class="btn secondary" data-range="day">24 Hours</button>
+                <button class="btn secondary" data-range="week">7 Days</button>
+                <button class="btn secondary" data-range="month">30 Days</button>
+            </div>
+        </section>
+    </main>
+
+    <div id="setupModal" class="modal">
+        <div class="modal-content">
+            <h2>Request System Setup</h2>
+            <form id="setupForm">
+                <div class="form-group">
+                    <label for="address">Installation Address</label>
+                    <textarea id="address" required></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="preferredDate">Preferred Installation Date</label>
+                    <input type="date" id="preferredDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="notes">Additional Notes</label>
+                    <textarea id="notes"></textarea>
+                </div>
+                <button type="submit" class="btn primary">Submit Request</button>
+                <button type="button" class="btn secondary" id="closeModal">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2024 Smart Greenhouse IoT System. All rights reserved.</p>
+    </footer>
+
+    <script type="module" src="js/firebase-config.js"></script>
+    <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>
