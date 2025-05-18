@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Firestore Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        #results {
+            margin-top: 20px;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Debug Firestore Data</h1>
+    
+    <div>
+        <button id="checkAllBtn">Check ALL Collections</button>
+        <button id="checkSensorDataBtn">Check sensorData Collection</button>
+        <button id="checkUsersBtn">Check users Collection</button>
+        <button id="directDocumentBtn">Direct Document Access</button>
+        <button id="createTestDataBtn">Create Test Data</button>
+    </div>
+    
+    <h2>Results:</h2>
+    <pre id="results">Results will appear here...</pre>
+    
+    <script type="module">
+        // First check if Firebase is loaded properly
+        const resultsDiv = document.getElementById('results');
+        
+        function log(message, isError = false) {
+            if (isError) {
+                resultsDiv.innerHTML += `<div class="error">${message}</div>\n`;
+                console.error(message);
+            } else if (typeof message === 'object') {
+                resultsDiv.textContent += JSON.stringify(message, null, 2) + '\n';
+                console.log(message);
+            } else {
+                resultsDiv.textContent += message + '\n';
+                console.log(message);
+            }
+        }
+        
+        // Initial check
+        log("Script started - checking Firebase imports...");
+        
+        try {
+            // Check if firebase-config.js exists and can be imported
+            import('./js/firebase-config.js')
+                .then(module => {
+                    const { auth, db } = module;
+                    log("Firebase config loaded successfully");
+                    
+                    if (!auth) {
+                        log("ERROR: auth is not exported from firebase-config.js", true);
+                        return;
+                    }
+                    
+                    if (!db) {
+                        log("ERROR: db is not exported from firebase-config.js", true);
+                        return;
+                    }
+                    
+                    log("Firebase auth and db objects found");
+                    initializeApp(auth, db);
+                })
+                .catch(error => {
+                    log(`ERROR importing firebase-config.js: ${error.message}`, true);
+                    log("Please check if the file exists at ./js/firebase-config.js", true);
+                });
+        } catch (error) {
+            log(`Critical error setting up Firebase: ${error.message}`, true);
+        }
+        
+        function initializeApp(auth, db) {
+            // Import Firebase modules
+            import("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js")
+                .then(firestore => {
+                    const { 
+                        collection, 
+                        getDocs, 
+                        query,
+                        where,
+                        orderBy,
+                        doc,
+                        getDoc,
+                        setDoc,
+                        Timestamp,
+                        addDoc
+                    } = firestore;
+                    
+                    log("Firebase Firestore SDK imported successfully");
+                    
+                    // Check if the user is logged in
+                    if (auth.currentUser) {
+                        log(`Already logged in as: ${auth.currentUser.email}`);
+                    } else {
+                        log("User not logged in. Please log in first.");
+                    }
+                    
+                    // Attach event listeners to buttons
+                    setupButtonListeners(auth, db, firestore);
+                })
+                .catch(error => {
+                    log(`ERROR importing Firestore SDK: ${error.message}`, true);
+                });
+        }
+        
+        function setupButtonListeners(auth, db, firestore) {
+            const { 
+                collection, 
+                getDocs, 
+                query,
+                where,
+                orderBy,
+                doc,
+                getDoc,
+                setDoc,
+                Timestamp,
+                addDoc
+            } = firestore;
+            
+            // Check all collections
+            document.getElementById('checkAllBtn').addEventListener('click', async () => {
+                resultsDiv.textContent = 'Checking all collections...\n';
+                
+                try {
+                    const user = auth.currentUser;
+                    if (!user) {
+                        log('ERROR: Not authenticated! Please sign in first.', true);
+                        return;
+                    }
+                    
+                    log(`Authenticated as: ${user.email} (${user.uid})`);
+                    
+                    // Try to query 'sensorData' collection
+                    try {
+                        const sensorDataSnapshot = await getDocs(collection(db, 'sensorData'));
+                        log(`'sensorData' collection has ${sensorDataSnapshot.size} documents`);
+                        
+                        sensorDataSnapshot.forEach(doc => {
+                            log(`Document ID: ${doc.id}`);
+                            const data = doc.data();
+                            log('Data:');
+                            log(data);
+                            
+                            // Check field types
+                            for (const [key, value] of Object.entries(data)) {
+                                log(`Field '${key}' is type: ${typeof value} (${value?.constructor?.name || 'unknown'})`);
+                            }
+                        });
+                    } catch (error) {
+                        log('Error querying sensorData: ' + error.message, true);
+                    }
+                    
+                    // Try to query 'users' collection
+                    try {
+                        const usersSnapshot = await getDocs(collection(db, 'users'));
+                        log(`'users' collection has ${usersSnapshot.size} documents`);
+                        
+                        usersSnapshot.forEach(doc => {
+                            log(`Document ID: ${doc.id}`);
+                            const data = doc.data();
+                            log('User data:');
+                            log(data);
+                        });
+                    } catch (error) {
+                        log('Error querying users: ' + error.message, true);
+                    }
+                    
+                } catch (error) {
+                    log('Error: ' + error.message, true);
+                }
+            });
+            
+            // Check sensorData collection
+            document.getElementById('checkSensorDataBtn').addEventListener('click', async () => {
+                resultsDiv.textContent = 'Checking sensorData collection...\n';
+                
+                try {
+                    // Try different variations of userId
+                    const userId = "523026834563";
+                    log(`Looking for userId: ${userId} (${typeof userId})`);
+                    
+                    // 1. Try without any filters
+                    const q1 = collection(db, 'sensorData');
+                    const snapshot1 = await getDocs(q1);
+                    log(`Found ${snapshot1.size} documents in sensorData (no filters)`);
+                    
+                    snapshot1.forEach(doc => {
+                        log(`Document ID: ${doc.id}`);
+                        const data = doc.data();
+                        log('Data:');
+                        log(data);
+                    });
+                    
+                    // 2. Try with userId filter (string)
+                    const q2 = query(collection(db, 'sensorData'), where('userId', '==', userId));
+                    const snapshot2 = await getDocs(q2);
+                    log(`Found ${snapshot2.size} documents with userId = "${userId}" (string)`);
+                    
+                    // 3. Try with userId filter (number)
+                    const q3 = query(collection(db, 'sensorData'), where('userId', '==', Number(userId)));
+                    const snapshot3 = await getDocs(q3);
+                    log(`Found ${snapshot3.size} documents with userId = ${Number(userId)} (number)`);
+                    
+                    // 4. Try with LOWERCASE userId field
+                    const q4 = query(collection(db, 'sensorData'), where('userid', '==', userId));
+                    const snapshot4 = await getDocs(q4);
+                    log(`Found ${snapshot4.size} documents with userid = "${userId}" (lowercase field)`);
+                    
+                    // 5. Try with UPPERCASE userId field
+                    const q5 = query(collection(db, 'sensorData'), where('USERID', '==', userId));
+                    const snapshot5 = await getDocs(q5);
+                    log(`Found ${snapshot5.size} documents with USERID = "${userId}" (uppercase field)`);
+                    
+                } catch (error) {
+                    log('Error: ' + error.message, true);
+                }
+            });
+            
+            // Check users collection
+            document.getElementById('checkUsersBtn').addEventListener('click', async () => {
+                resultsDiv.textContent = 'Checking users collection...\n';
+                
+                try {
+                    const user = auth.currentUser;
+                    if (!user) {
+                        log('ERROR: Not authenticated! Please sign in first.', true);
+                        return;
+                    }
+                    
+                    log(`Authenticated as: ${user.email} (${user.uid})`);
+                    
+                    // Get user document
+                    const userDoc = await getDoc(doc(db, 'users', user.uid));
+                    
+                    if (userDoc.exists()) {
+                        log('User document found:');
+                        const userData = userDoc.data();
+                        log(userData);
+                        
+                        // Check if userId exists and its type
+                        if (userData.userId) {
+                            log(`userId field: ${userData.userId} (${typeof userData.userId})`);
+                            
+                            // Try to find sensorData with this userId
+                            const q = query(
+                                collection(db, 'sensorData'),
+                                where('userId', '==', userData.userId)
+                            );
+                            
+                            const snapshot = await getDocs(q);
+                            log(`Found ${snapshot.size} documents with userId matching user profile`);
+                        } else {
+                            log('No userId field found in user document!', true);
+                        }
+                    } else {
+                        log('User document not found!', true);
+                    }
+                    
+                } catch (error) {
+                    log('Error: ' + error.message, true);
+                }
+            });
+            
+            // Direct document access
+            document.getElementById('directDocumentBtn').addEventListener('click', async () => {
+                resultsDiv.textContent = 'Attempting direct document access...\n';
+                
+                try {
+                    // Try to directly access the document we saw in the Firebase console
+                    // NOTE: Update this ID to match your document ID from Firebase console
+                    const docId = prompt("Enter the document ID from Firebase console:", "rps859zErW9FbAQY71P");
+                    
+                    if (!docId) {
+                        log("No document ID provided", true);
+                        return;
+                    }
+                    
+                    log(`Trying to fetch document with ID: ${docId}`);
+                    const docRef = doc(db, 'sensorData', docId);
+                    const docSnap = await getDoc(docRef);
+                    
+                    if (docSnap.exists()) {
+                        log('Document found!');
+                        const data = docSnap.data();
+                        log('Document data:');
+                        log(data);
+                        
+                        // Check field types
+                        for (const [key, value] of Object.entries(data)) {
+                            log(`Field '${key}' is type: ${typeof value} (${value?.constructor?.name || 'unknown'})`);
+                        }
+                    } else {
+                        log('Document does not exist!', true);
+                    }
+                    
+                } catch (error) {
+                    log('Error: ' + error.message, true);
+                }
+            });
+            
+            // Create test data
+            document.getElementById('createTestDataBtn').addEventListener('click', async () => {
+                resultsDiv.textContent = 'Creating test data...\n';
+                
+                try {
+                    const user = auth.currentUser;
+                    if (!user) {
+                        log('ERROR: Not authenticated! Please sign in first.', true);
+                        return;
+                    }
+                    
+                    // Get user document to ensure we use the correct userId
+                    let userId = "523026834563"; // Default
+                    
+                    try {
+                        const userDoc = await getDoc(doc(db, 'users', user.uid));
+                        if (userDoc.exists() && userDoc.data().userId) {
+                            userId = userDoc.data().userId;
+                            log(`Using userId from user profile: ${userId}`);
+                        } else {
+                            log(`Using default userId: ${userId}`);
+                        }
+                    } catch (error) {
+                        log(`Error getting user profile, using default userId: ${error.message}`, true);
+                    }
+                    
+                    // Current timestamp (as a Firebase Timestamp)
+                    const now = Timestamp.now();
+                    
+                    // Create test document
+                    const docData = {
+                        userId: userId,
+                        timestamp: now,
+                        temperature: 26.5,
+                        humidity: 70.2,
+                        soilMoisture: 68.3,
+                        lightIntensity: 9200,
+                        waterLevel: 80.1
+                    };
+                    
+                    log('Creating document with data:');
+                    log(docData);
+                    
+                    // Add the document
+                    const docRef = await addDoc(collection(db, 'sensorData'), docData);
+                    
+                    log(`Document created with ID: ${docRef.id}`);
+                    log('Verifying document...');
+                    
+                    // Verify the document was created
+                    const docSnap = await getDoc(docRef);
+                    
+                    if (docSnap.exists()) {
+                        log('Document verified!');
+                        log(docSnap.data());
+                        
+                        log('IMPORTANT: You should now see this data in your dashboard!');
+                        log('If not, there may be a timestamp issue in your dashboard filtering.');
+                    } else {
+                        log('ERROR: Document was not created properly!', true);
+                    }
+                    
+                } catch (error) {
+                    log('Error: ' + error.message, true);
+                }
+            });
+            
+            // Log that buttons have been initialized
+            log("All buttons initialized - click any button to start debugging");
+        }
+    </script>
+</body>
+</html> 

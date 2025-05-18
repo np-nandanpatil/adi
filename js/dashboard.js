@@ -192,6 +192,37 @@ function updateChart(data) {
     }
 }
 
+// Time range buttons
+const timeRangeButtons = document.querySelectorAll('.time-range button');
+timeRangeButtons.forEach(button => {
+    button.addEventListener('click', () => {
+        timeRangeButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+        fetchHistoricalData(button.dataset.range);
+    });
+});
+
+// Add all-time button to HTML via JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    const timeRangeContainer = document.querySelector('.time-range');
+    if (timeRangeContainer) {
+        const allTimeButton = document.createElement('button');
+        allTimeButton.className = 'btn secondary';
+        allTimeButton.dataset.range = 'all';
+        allTimeButton.textContent = 'All Time';
+        allTimeButton.style.backgroundColor = '#ff9800';
+        allTimeButton.addEventListener('click', () => {
+            timeRangeButtons.forEach(btn => btn.classList.remove('active'));
+            allTimeButton.classList.add('active');
+            fetchHistoricalData('all');
+        });
+        timeRangeContainer.appendChild(allTimeButton);
+        
+        // Auto-click this button on load
+        setTimeout(() => allTimeButton.click(), 1000);
+    }
+});
+
 // Fetch historical data
 async function fetchHistoricalData(range, userId) {
     try {
@@ -221,32 +252,55 @@ async function fetchHistoricalData(range, userId) {
             }
         }
         
-        const now = Date.now();
-        let startTime;
+        // CRITICAL FIX: Always make sure userId is a NUMBER type for Firestore
+        // (This is the key fix for the data type mismatch)
+        if (typeof userId !== 'number') {
+            userId = Number(userId);
+        }
+        console.log(`Using userId ${userId} as number:`, userId, "Type:", typeof userId);
         
-        switch (range) {
-            case 'day':
-                startTime = new Date(now - 24 * 60 * 60 * 1000);
-                break;
-            case 'week':
-                startTime = new Date(now - 7 * 24 * 60 * 60 * 1000);
-                break;
-            case 'month':
-                startTime = new Date(now - 30 * 24 * 60 * 60 * 1000);
-                break;
-            default:
-                startTime = new Date(now - 24 * 60 * 60 * 1000);
+        // FIXED: When 'all' is selected, don't add timestamp filter
+        let sensorQuery;
+        
+        if (range === 'all') {
+            console.log("Fetching ALL historical data without time filter");
+            sensorQuery = query(
+                collection(db, 'sensorData'),
+                where('userId', '==', userId),
+                orderBy('timestamp', 'desc')
+            );
+        } else {
+            const now = Date.now();
+            let startTime;
+            
+            switch (range) {
+                case 'day':
+                    startTime = new Date(now - 24 * 60 * 60 * 1000);
+                    break;
+                case 'week':
+                    startTime = new Date(now - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case 'month':
+                    startTime = new Date(now - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    startTime = new Date(now - 24 * 60 * 60 * 1000);
+            }
+            
+            console.log("Using time filter from:", startTime);
+            sensorQuery = query(
+                collection(db, 'sensorData'),
+                where('userId', '==', userId),
+                where('timestamp', '>=', startTime),
+                orderBy('timestamp', 'asc')
+            );
         }
 
-        const sensorQuery = query(
-            collection(db, 'sensorData'),
-            where('userId', '==', userId),
-            where('timestamp', '>=', startTime),
-            orderBy('timestamp', 'asc')
-        );
-
+        console.log("Executing query:", sensorQuery);
         const snapshot = await getDocs(sensorQuery);
 
+        console.log(`Query returned ${snapshot.size} documents`);
+        
         if (snapshot.empty) {
             console.log('No historical data found for the specified range');
             updateChart({
@@ -268,6 +322,7 @@ async function fetchHistoricalData(range, userId) {
         snapshot.forEach(doc => {
             try {
                 const sensorData = doc.data();
+                console.log("Processing document:", doc.id, sensorData);
                 if (!sensorData.timestamp || !sensorData.temperature || !sensorData.humidity || !sensorData.soilMoisture) {
                     console.warn('Incomplete sensor data found:', sensorData);
                     return;
@@ -283,6 +338,8 @@ async function fetchHistoricalData(range, userId) {
 
         if (data.timestamps.length === 0) {
             console.warn('No valid data points found in the specified range');
+        } else {
+            console.log(`Processed ${data.timestamps.length} valid data points`);
         }
 
         updateChart(data);
@@ -351,16 +408,6 @@ if (setupForm) {
     });
 }
 
-// Time range buttons
-const timeRangeButtons = document.querySelectorAll('.time-range button');
-timeRangeButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        timeRangeButtons.forEach(btn => btn.classList.remove('active'));
-        button.classList.add('active');
-        fetchHistoricalData(button.dataset.range);
-    });
-});
-
 // Initialize dashboard with comprehensive error handling and connection management
 async function initializeDashboard(retryCount = 0) {
     const MAX_RETRIES = 3;
@@ -404,13 +451,29 @@ async function initializeDashboard(retryCount = 0) {
         const userData = userDoc.data();
         document.getElementById('userName').textContent = userData.name;
 
-        // FIXED: Use userData.userId instead of user.uid for sensor data queries
-        console.log("Using userId for queries:", userData.userId);
+        // FIXED: Convert userId to number - make sure it's a number type for Firestore
+        const userIdNumber = Number(userData.userId);
+        console.log("User ID from profile:", userData.userId, "Type:", typeof userData.userId);
+        console.log("Converted to number:", userIdNumber, "Type:", typeof userIdNumber);
+
+        // Test with direct document access - bypass queries altogether
+        try {
+            // Try to directly fetch a known document to see if we can access it
+            const sensorDataDoc = await getDoc(doc(db, 'sensorData', 'rps859zErrW9FbAQY71P'));
+            if (sensorDataDoc.exists()) {
+                console.log("DIRECT DOCUMENT ACCESS SUCCESSFUL:", sensorDataDoc.data());
+                updateRealTimeData(sensorDataDoc.data());
+            } else {
+                console.log("DIRECT DOCUMENT ACCESS: Document doesn't exist");
+            }
+        } catch (directError) {
+            console.error("Error with direct document access:", directError);
+        }
 
         // Set up real-time listener for sensor data with enhanced error handling
         const sensorQuery = query(
             collection(db, 'sensorData'),
-            where('userId', '==', userData.userId),
+            where('userId', '==', userIdNumber), // Using number type
             orderBy('timestamp', 'desc'),
             limit(1)
         );
@@ -446,7 +509,7 @@ async function initializeDashboard(retryCount = 0) {
                     updateRealTimeData(data);
                 } else {
                     console.log("No data found in snapshot. Check userId match.");
-                    console.log("Looking for userId:", userData.userId);
+                    console.log("Looking for userId:", userIdNumber);
                 }
             },
             error => {
@@ -490,8 +553,31 @@ async function initializeDashboard(retryCount = 0) {
             }
         );
 
-        // Load initial historical data with userData.userId
-        fetchHistoricalData('day', userData.userId);
+        // Load initial historical data using the number conversion
+        fetchHistoricalData('all', userIdNumber);
+        
+        // ADDED: Direct fetch for real-time data without waiting for listener
+        // This way we immediately show data even if real-time updates aren't working
+        try {
+            const latestDataQuery = query(
+                collection(db, 'sensorData'),
+                where('userId', '==', Number(userIdNumber)),
+                orderBy('timestamp', 'desc'),
+                limit(1)
+            );
+            
+            const latestSnapshot = await getDocs(latestDataQuery);
+            console.log("Direct query for latest data returned:", latestSnapshot.size, "documents");
+            
+            if (!latestSnapshot.empty) {
+                const data = latestSnapshot.docs[0].data();
+                console.log("Latest data found:", data);
+                updateRealTimeData(data);
+            }
+        } catch (directQueryError) {
+            console.error("Error in direct latest data query:", directQueryError);
+        }
+        
     } catch (error) {
         console.error('Error initializing dashboard:', error);
         updateConnectionStatus('error', 'Dashboard initialization error');
