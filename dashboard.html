@@ -83,5 +83,30 @@
 
     <script type="module" src="js/firebase-config.js"></script>
     <script type="module" src="js/dashboard.js"></script>
+    <script type="module">
+        // Add direct logout functionality
+        import { auth } from './js/firebase-config.js';
+        import { signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const logoutBtn = document.getElementById('logoutBtn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    console.log('Logout button clicked');
+                    try {
+                        await signOut(auth);
+                        console.log('User signed out successfully');
+                        window.location.href = 'login.html';
+                    } catch (error) {
+                        console.error('Error signing out:', error);
+                        alert('Error during logout: ' + error.message);
+                        // Force redirect even if logout fails
+                        window.location.href = 'login.html';
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>

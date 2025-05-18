@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logout Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .success {
+            color: green;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Logout Functionality Test</h1>
+    <p>This page tests the Firebase authentication logout functionality.</p>
+    
+    <div>
+        <button id="checkAuthBtn">Check Auth Status</button>
+        <button id="logoutBtn">Logout (Direct)</button>
+        <button id="redirectBtn">Redirect to Login</button>
+    </div>
+    
+    <h2>Results:</h2>
+    <pre id="results">Results will appear here...</pre>
+    
+    <script type="module">
+        import { auth } from './js/firebase-config.js';
+        import { signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        
+        const resultsDiv = document.getElementById('results');
+        
+        function log(message, type = 'info') {
+            const date = new Date().toLocaleTimeString();
+            if (typeof message === 'object') {
+                resultsDiv.innerHTML += `<div class="${type}">[${date}] ${JSON.stringify(message, null, 2)}</div>\n`;
+            } else {
+                resultsDiv.innerHTML += `<div class="${type}">[${date}] ${message}</div>\n`;
+            }
+            console.log(`[${date}] ${message}`);
+        }
+        
+        // Check auth status
+        document.getElementById('checkAuthBtn').addEventListener('click', () => {
+            const user = auth.currentUser;
+            if (user) {
+                log(`Authenticated as: ${user.email} (${user.uid})`, 'success');
+            } else {
+                log('Not authenticated', 'error');
+            }
+        });
+        
+        // Direct logout
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            try {
+                log('Attempting to sign out...');
+                await signOut(auth);
+                log('Successfully signed out!', 'success');
+            } catch (error) {
+                log(`Error signing out: ${error.message}`, 'error');
+            }
+        });
+        
+        // Redirect to login
+        document.getElementById('redirectBtn').addEventListener('click', () => {
+            log('Redirecting to login page...');
+            window.location.href = 'login.html';
+        });
+        
+        // Monitor auth state changes
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                log(`Auth state changed: User is signed in (${user.email})`, 'success');
+            } else {
+                log('Auth state changed: User is signed out', 'error');
+            }
+        });
+        
+        // Check initial auth state
+        document.addEventListener('DOMContentLoaded', () => {
+            const user = auth.currentUser;
+            if (user) {
+                log(`Initial state: Authenticated as ${user.email}`, 'success');
+            } else {
+                log('Initial state: Not authenticated', 'error');
+                
+                // There's a delay before auth state is fully determined
+                log('Waiting for auth state to initialize...');
+                setTimeout(() => {
+                    const user = auth.currentUser;
+                    if (user) {
+                        log(`After delay: Authenticated as ${user.email}`, 'success');
+                    } else {
+                        log('After delay: Not authenticated', 'error');
+                    }
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html> 
