@@ -20,6 +20,10 @@
     <main class="container">
         <section class="auth-section">
             <h2>Create Your Account</h2>
+            <div class="info-box">
+                <p>Upon successful registration, you will receive a unique 12-digit User ID.</p>
+                <p>Please save this ID as you will need it to login to your account.</p>
+            </div>
             <form id="registerForm" class="auth-form">
                 <div class="form-group">
                     <label for="name">Full Name</label>
@@ -35,11 +39,11 @@
                 </div>
                 <div class="form-group">
                     <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required>
+                    <input type="password" id="password" name="password" required minlength="6">
                 </div>
                 <div class="form-group">
                     <label for="confirmPassword">Confirm Password</label>
-                    <input type="password" id="confirmPassword" name="confirmPassword" required>
+                    <input type="password" id="confirmPassword" name="confirmPassword" required minlength="6">
                 </div>
                 <button type="submit" class="btn primary">Register</button>
             </form>

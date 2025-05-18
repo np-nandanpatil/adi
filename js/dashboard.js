@@ -13,7 +13,9 @@ import {
     onSnapshot,
     getDocs,
     addDoc,
-    serverTimestamp
+    serverTimestamp,
+    enableNetwork,
+    disableNetwork
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // Initialize Chart.js with error handling
@@ -41,8 +43,18 @@ function createStatusElement() {
 }
 
 function updateConnectionStatus(status, message) {
-    createStatusElement(); // Ensure element exists or is created
-    if (!statusElement) return;
+    let statusElement = document.getElementById('connectionStatus');
+    if (!statusElement) {
+        statusElement = document.createElement('div');
+        statusElement.id = 'connectionStatus';
+        statusElement.style.position = 'fixed';
+        statusElement.style.top = '20px';
+        statusElement.style.right = '20px';
+        statusElement.style.padding = '10px 20px';
+        statusElement.style.borderRadius = '5px';
+        statusElement.style.zIndex = '1000';
+        document.body.appendChild(statusElement);
+    }
     
     const colors = {
         connected: '#4CAF50',
@@ -58,8 +70,7 @@ function updateConnectionStatus(status, message) {
     if ((status === 'disconnected' || status === 'error') && typeof initializeDashboard === 'function') {
         statusElement.style.cursor = 'pointer';
         statusElement.title = 'Click to retry connection';
-        // Ensure initializeDashboard is available in this scope or handle appropriately
-        statusElement.onclick = () => initializeDashboard(); 
+        statusElement.onclick = () => initializeDashboard();
     } else {
         statusElement.style.cursor = 'default';
         statusElement.onclick = null;
@@ -126,6 +137,8 @@ function initializeChart() {
 // Update real-time data with error handling
 function updateRealTimeData(data) {
     try {
+        console.log("UPDATE REAL-TIME DATA RECEIVED:", JSON.stringify(data));
+        
         if (!data) {
             console.error('No data provided to updateRealTimeData');
             return;
@@ -138,9 +151,15 @@ function updateRealTimeData(data) {
         };
         
         if (!Object.values(elements).every(el => el)) {
-            console.error('One or more display elements not found');
+            console.error('One or more display elements not found:', elements);
             return;
         }
+        
+        console.log("Updating DOM elements with values:", {
+            temperature: data.temperature,
+            humidity: data.humidity,
+            soilMoisture: data.soilMoisture
+        });
         
         elements.temperature.textContent = `${data.temperature ?? '--'}°C`;
         elements.humidity.textContent = `${data.humidity ?? '--'}%`;
@@ -174,17 +193,37 @@ function updateChart(data) {
 }
 
 // Fetch historical data
-async function fetchHistoricalData(range) {
+async function fetchHistoricalData(range, userId) {
     try {
-        const user = auth.currentUser;
-        if (!user) {
-            console.error('No authenticated user found');
-            updateConnectionStatus('disconnected', 'Not authenticated');
-            return;
+        updateConnectionStatus('connecting', 'Fetching data...');
+        
+        if (!userId) {
+            // Try to get userId if not provided (fallback)
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    throw new Error('Not authenticated');
+                }
+                
+                const userDocRef = doc(db, 'users', user.uid);
+                const userDoc = await getDoc(userDocRef);
+                
+                if (!userDoc.exists()) {
+                    throw new Error('User data not found');
+                }
+                
+                userId = userDoc.data().userId;
+                console.log("Fetched userId for query:", userId);
+            } catch (error) {
+                console.error('Error getting userId:', error);
+                updateConnectionStatus('error', 'User data error');
+                return;
+            }
         }
-
-        const now = new Date();
+        
+        const now = Date.now();
         let startTime;
+        
         switch (range) {
             case 'day':
                 startTime = new Date(now - 24 * 60 * 60 * 1000);
@@ -201,7 +240,7 @@ async function fetchHistoricalData(range) {
 
         const sensorQuery = query(
             collection(db, 'sensorData'),
-            where('userId', '==', user.uid),
+            where('userId', '==', userId),
             where('timestamp', '>=', startTime),
             orderBy('timestamp', 'asc')
         );
@@ -247,6 +286,11 @@ async function fetchHistoricalData(range) {
         }
 
         updateChart(data);
+        updateConnectionStatus('connected', 'Data loaded');
+        setTimeout(() => {
+            const statusElement = document.getElementById('connectionStatus');
+            if (statusElement) statusElement.style.display = 'none';
+        }, 2000);
     } catch (error) {
         console.error('Error fetching historical data:', error);
         if (error.code === 'permission-denied') {
@@ -319,17 +363,18 @@ timeRangeButtons.forEach(button => {
 
 // Initialize dashboard with comprehensive error handling and connection management
 async function initializeDashboard(retryCount = 0) {
-    const MAX_RETRIES = 5;
-    const RETRY_DELAY = 3000; // 3 seconds
-    const BACKOFF_MULTIPLIER = 1.5; // Exponential backoff
-    // Initialize Chart.js
-    if (!chartInitialized && !initializeChart()) {
-        return;
-    }
-    
-    createStatusElement(); // Ensure status element is created
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 2000;
+    const BACKOFF_MULTIPLIER = 2;
 
     try {
+        // Initialize Chart.js
+        if (!chartInitialized && !initializeChart()) {
+            return;
+        }
+        
+        createStatusElement(); // Ensure status element is created
+
         const user = auth.currentUser;
         if (!user) {
             updateConnectionStatus('disconnected', 'Not authenticated');
@@ -359,13 +404,18 @@ async function initializeDashboard(retryCount = 0) {
         const userData = userDoc.data();
         document.getElementById('userName').textContent = userData.name;
 
+        // FIXED: Use userData.userId instead of user.uid for sensor data queries
+        console.log("Using userId for queries:", userData.userId);
+
         // Set up real-time listener for sensor data with enhanced error handling
         const sensorQuery = query(
             collection(db, 'sensorData'),
-            where('userId', '==', user.uid),
+            where('userId', '==', userData.userId),
             orderBy('timestamp', 'desc'),
             limit(1)
         );
+
+        console.log("Query structure:", sensorQuery);
 
         let isFirstConnection = true;
         updateConnectionStatus('connecting', 'Establishing connection...');
@@ -378,53 +428,73 @@ async function initializeDashboard(retryCount = 0) {
         
         firestoreListenerUnsubscribe = onSnapshot(sensorQuery, 
             snapshot => {
+                console.log("Snapshot received, empty?", snapshot.empty);
+                console.log("Snapshot size:", snapshot.size);
+                console.log("Snapshot docs:", snapshot.docs.map(d => d.id));
+                
                 if (isFirstConnection) {
                     updateConnectionStatus('connected', 'Connected');
                     isFirstConnection = false;
+                    setTimeout(() => {
+                        const statusElement = document.getElementById('connectionStatus');
+                        if (statusElement) statusElement.style.display = 'none';
+                    }, 3000);
                 }
                 if (!snapshot.empty) {
                     const data = snapshot.docs[0].data();
+                    console.log("First document data:", JSON.stringify(data));
                     updateRealTimeData(data);
+                } else {
+                    console.log("No data found in snapshot. Check userId match.");
+                    console.log("Looking for userId:", userData.userId);
                 }
             },
             error => {
                 console.error('Error in real-time sensor data listener:', error);
-                updateConnectionStatus('disconnected', 'Connection error');
+                updateConnectionStatus('error', 'Connection error');
 
                 if (error.code === 'permission-denied') {
                     console.error('Firestore permission denied. Please check security rules.');
-                    updateConnectionStatus('disconnected', 'Access denied');
+                    updateConnectionStatus('error', 'Access denied');
                     alert('Access denied. Please ensure you have proper permissions.');
                     return;
                 }
 
-                if (error.code === 'unavailable' || error.code === 'resource-exhausted') {
-                    updateConnectionStatus('disconnected', 'Server unavailable');
-                }
-
                 if (retryCount < MAX_RETRIES) {
                     const nextDelay = RETRY_DELAY * Math.pow(BACKOFF_MULTIPLIER, retryCount);
-                    console.log(`Retrying real-time connection (${retryCount + 1}/${MAX_RETRIES}) in ${nextDelay/1000}s...`);
-                    updateConnectionStatus('disconnected', `Reconnecting in ${Math.ceil(nextDelay/1000)}s...`);
-                    setTimeout(() => {
-                        if (firestoreListenerUnsubscribe) {
-                            firestoreListenerUnsubscribe(); // Clean up existing listener
-                            firestoreListenerUnsubscribe = null;
+                    console.log(`Retrying connection (${retryCount + 1}/${MAX_RETRIES}) in ${nextDelay/1000}s...`);
+                    updateConnectionStatus('connecting', `Reconnecting in ${Math.ceil(nextDelay/1000)}s...`);
+                    
+                    setTimeout(async () => {
+                        try {
+                            if (firestoreListenerUnsubscribe) {
+                                firestoreListenerUnsubscribe();
+                                firestoreListenerUnsubscribe = null;
+                            }
+                            
+                            // Reset connection
+                            await disableNetwork(db);
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            await enableNetwork(db);
+                            
+                            initializeDashboard(retryCount + 1);
+                        } catch (error) {
+                            console.error('Error during connection reset:', error);
+                            updateConnectionStatus('error', 'Connection reset failed');
                         }
-                        initializeDashboard(retryCount + 1);
                     }, nextDelay);
                 } else {
-                    updateConnectionStatus('disconnected', 'Connection failed');
-                    alert('Unable to establish real-time connection. Please check your internet connection and refresh the page.');
+                    updateConnectionStatus('error', 'Connection failed');
+                    alert('Unable to establish connection. Please refresh the page.');
                 }
             }
         );
 
-        // Load initial historical data
-        fetchHistoricalData('day');
+        // Load initial historical data with userData.userId
+        fetchHistoricalData('day', userData.userId);
     } catch (error) {
         console.error('Error initializing dashboard:', error);
-        updateConnectionStatus('error', 'Dashboard init error'); // Now accessible
+        updateConnectionStatus('error', 'Dashboard initialization error');
     }
 }
 

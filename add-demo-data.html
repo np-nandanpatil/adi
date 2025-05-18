@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Demo Data</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #4CAF50;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f1f1f1;
+        }
+        #debug {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background-color: #f9f9f9;
+            max-height: 300px;
+            overflow: auto;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Add Demo Data for Dashboard</h1>
+    <p>This utility will add sample sensor data points to your Firestore database using the userId <code>523026834563</code>.</p>
+    
+    <button id="checkDataBtn">Check Existing Data</button>
+    <button id="addDataBtn">Add Fresh Sample Data</button>
+    <button id="clearLogsBtn">Clear Logs</button>
+    
+    <div id="status">Ready to add data...</div>
+    <div id="debug"></div>
+    
+    <script type="module">
+        import { auth, db } from './js/firebase-config.js';
+        import { 
+            collection, 
+            addDoc, 
+            Timestamp, 
+            query, 
+            where, 
+            getDocs, 
+            orderBy 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        
+        const statusElement = document.getElementById('status');
+        const debugElement = document.getElementById('debug');
+        
+        function log(message) {
+            const logItem = document.createElement('div');
+            logItem.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            debugElement.appendChild(logItem);
+            debugElement.scrollTop = debugElement.scrollHeight;
+            console.log(message);
+        }
+        
+        document.getElementById('clearLogsBtn').addEventListener('click', () => {
+            debugElement.innerHTML = '';
+        });
+        
+        document.getElementById('checkDataBtn').addEventListener('click', async () => {
+            try {
+                statusElement.textContent = 'Checking existing data...';
+                log('Checking existing data in Firestore...');
+                
+                // String userId - explicitly ensure it's a string type
+                const userId = "523026834563";
+                log(`Using userId (type: ${typeof userId}): ${userId}`);
+                
+                // Query for existing data
+                const sensorQuery = query(
+                    collection(db, "sensorData"),
+                    where('userId', '==', userId),
+                    orderBy('timestamp', 'desc')
+                );
+                
+                const snapshot = await getDocs(sensorQuery);
+                
+                if (snapshot.empty) {
+                    log('No existing data found for this userId');
+                    statusElement.textContent = 'No data found!';
+                } else {
+                    log(`Found ${snapshot.size} documents.`);
+                    
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        log(`Document ID: ${doc.id}`);
+                        log(`- userId: ${data.userId} (type: ${typeof data.userId})`);
+                        log(`- timestamp: ${data.timestamp.toDate().toLocaleString()}`);
+                        log(`- temperature: ${data.temperature}`);
+                        log(`- humidity: ${data.humidity}`);
+                        log(`- soilMoisture: ${data.soilMoisture}`);
+                        log(`- lightIntensity: ${data.lightIntensity}`);
+                        log(`- waterLevel: ${data.waterLevel}`);
+                        log('---');
+                    });
+                    
+                    statusElement.textContent = `Found ${snapshot.size} existing documents.`;
+                }
+            } catch (error) {
+                log(`ERROR: ${error.message}`);
+                statusElement.textContent = `Error: ${error.message}`;
+            }
+        });
+        
+        document.getElementById('addDataBtn').addEventListener('click', async () => {
+            try {
+                statusElement.textContent = 'Adding data...';
+                
+                // Explicitly use string userId (not a number)
+                const userId = "523026834563";
+                log(`Using userId (type: ${typeof userId}): ${userId}`);
+                
+                // Add sample data point
+                const dataPoint1 = {
+                    userId: userId,
+                    temperature: 25.3,
+                    humidity: 68.5,
+                    soilMoisture: 72.0,
+                    lightIntensity: 8500,
+                    waterLevel: 85.2,
+                    timestamp: Timestamp.now()
+                };
+                
+                log(`Adding first data point: ${JSON.stringify(dataPoint1)}`);
+                const docRef = await addDoc(collection(db, "sensorData"), dataPoint1);
+                log(`Data added successfully! Document ID: ${docRef.id}`);
+                
+                // Add another data point with different values and slightly earlier timestamp
+                const dataPoint2 = {
+                    userId: userId,  // Same userId, string type
+                    temperature: 24.8,
+                    humidity: 65.2,
+                    soilMoisture: 69.5,
+                    lightIntensity: 7800,
+                    waterLevel: 83.7,
+                    timestamp: new Timestamp(
+                        Timestamp.now().seconds - 3600, // 1 hour earlier
+                        Timestamp.now().nanoseconds
+                    )
+                };
+                
+                log(`Adding second data point: ${JSON.stringify(dataPoint2)}`);
+                const docRef2 = await addDoc(collection(db, "sensorData"), dataPoint2);
+                log(`Second data point added! Document ID: ${docRef2.id}`);
+                
+                statusElement.textContent = 'Data added successfully! Check your dashboard.';
+                
+            } catch (error) {
+                log(`ERROR: ${error.message}`);
+                statusElement.textContent = `Error: ${error.message}`;
+            }
+        });
+    </script>
+</body>
+</html> 
